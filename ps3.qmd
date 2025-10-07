@@ -524,7 +524,7 @@ R is a little slower than SQL.
 ```{r}
 # import data to R
 aus_data <- read.csv("au-500.csv")
-aus_data
+head(aus_data)
 # number of records
 records <- nrow(aus_data)
 ```
@@ -563,7 +563,7 @@ cat("Proportion of company names contain a non-alphabetic character is",
 
 # proportion of company names that contain special characters
 # excluding ampersands
-special_wo_amp <- grep("[^a-zA-Z, \\s]", aus_data$company_name)
+special_wo_amp <- grep("[^a-zA-Z, \\s&]", aus_data$company_name)
 
 count_special_wo_amp <- length(special_wo_amp)
 prop_wo_amp <- count_special_wo_amp / records * 100
