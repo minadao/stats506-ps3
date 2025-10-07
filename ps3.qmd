@@ -90,7 +90,6 @@ unique(df["Children_under_5"])
 We can see in the description file of `DEMO_I.xpt` that the variable is categorical but unordered, value `11` is missing, and the levels are not numerical sorted.
 
 ```{r}
-(df["INDHHIN2"])
 # create an ordered factor 
 income_levels <- c("$0 - $4,999",
                    "$5,000 – $9,999",
@@ -118,14 +117,12 @@ df <- df %>%
                               labels = income_levels,
                               ordered = TRUE)
   )
-(df["Household_Income"])
 ```
 
 
 #### c. Tympanometric width measure distribution models
 ```{r}
 # Clean the data first
-unique(df["AUXTWIDR"])
 df_model <- df %>%
   filter(
     !is.na(AUXTWIDR) 
@@ -212,7 +209,7 @@ extract_model_results <- function(model, model_name) {
       term = case_when(
         term == "(Intercept)" ~ "Intercept",
         term == "GenderF" ~ "Female (vs Male)",
-        term == "citizenshipNon-Citizen" ~ "Non-Citizen (vs Citizen)",
+        term == "CitizenshipNon-Citizen" ~ "Non-Citizen (vs Citizen)",
         term == "Children_under_5" ~ "Children Under 5",
         term == "Income_cont" ~ "Household Income ($10k)",
         TRUE ~ term
@@ -263,7 +260,7 @@ all <- all_results %>%
   mutate(order = case_when(
     term == "Intercept" ~ 1,
     term == "Female (vs Male)" ~ 2,
-    term == "Non-citizen (vs Citizen)" ~ 3,
+    term == "Non-Citizen (vs Citizen)" ~ 3,
     term == "Children Under 5" ~ 4,
     term == "Household Income ($10k)" ~ 5,
     term == "N" ~ 6,
