@@ -1,0 +1,463 @@
+---
+title: "STATS 506 - Problem set 3"
+author: "Mina Dao"
+format: html
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Packages
+
+```{r, warning = FALSE, message = FALSE}
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(microbenchmark)
+library(tidyr)
+library(haven)
+library(broom)
+library(kableExtra)
+library(RSQLite)
+library(DBI)
+library(microbenchmark)
+```
+
+## Problem 1:
+
+#### a. Merge two datasets into a single `data.frame` and print out the dimensions
+
+```{r}
+aux <- read_xpt("AUX_I.xpt")
+demo <- read_xpt("DEMO_I.xpt")
+
+df <- inner_join(demo, aux, by = "SEQN")
+head(df)
+dim(df)
+```
+
+#### b. Clean the data
+
+* Gender
+
+```{r}
+# We do not have any missing values => convert to factor
+df <- df %>% 
+  mutate(
+    gender = factor(RIAGENDR,
+                    levels = c(1, 2),
+                    labels = c("male", "female"))
+)
+head(df["gender"])
+```
+
+
+* Citizenship status
+
+```{r}
+# convert "refused" and "don't know" to NA values
+# recode the column into factor
+df <- df %>% 
+  mutate(
+    DMDCITZN = ifelse(DMDCITZN %in% c(7, 9), NA, DMDCITZN),
+    citizenship = factor(DMDCITZN,
+                         levels = c(1, 2),
+                         labels = c("citizen",  "non-citizen"))
+  )
+
+unique(df["citizenship"])
+```
+
+* Number of children 5 years or younger in the household
+```{r}
+# no missing values so recode
+df <- df %>% 
+  mutate(
+    children_under_5 = factor(DMDHHSZA,
+                              levels = c(0, 1, 2, 3),
+                              labels = c("0", "1", "2", "3 or more"))
+  )
+
+unique(df["children_under_5"])
+```
+
+* Annual household income
+
+We can see in the description file of `DEMO_I.xpt` that the variable is categorical but unordered, value `11` is missing, and the levels are not numerical sorted.
+
+```{r}
+(df["INDHHIN2"])
+# create an ordered factor 
+income_levels <- c("$0 - $4,999",
+                   "$5,000 – $9,999",
+                   "$10,000 – $14,999",
+                   "$15,000 – $19,999",
+                   "$20,000 – $24,999",
+                   "$25,000 – $34,999",
+                   "$35,000 – $44,999",
+                   "$45,000 – $54,999",
+                   "$55,000 – $64,999",
+                   "$65,000 – $74,999",
+                   "$20,000 and Over",
+                   "Under $20,000",
+                   "$75,000 - $99,999",
+                   "$100,000 and Over"
+)
+
+
+# convert "missing" to NA and recode as factor
+df <- df %>% 
+  mutate(
+    INDHHIN2 = ifelse(INDHHIN2 %in% c(77, 99, .), NA, INDHHIN2),
+    household_income = factor(INDHHIN2,
+                              levels = c(1:10, 12:15),
+                              labels = income_levels,
+                              ordered = TRUE)
+  )
+(df["household_income"])
+```
+
+
+#### c. Tympanometric width measure distribution models
+```{r}
+# Clean the data first
+unique(df["AUXTWIDR"])
+df_model <- df %>%
+  filter(
+    !is.na(AUXTWIDR) 
+    & !is.na(AUXTWIDL)
+    & !is.na(gender) 
+    & !is.na(citizenship) 
+    & !is.na(children_under_5) 
+    & !is.na(household_income) 
+    & AUXTWIDR > 0
+  ) %>%
+  # convert household income to numeric for continuous
+  # using midpoint approach
+  mutate(
+    children_under_5 = as.numeric(children_under_5),
+    income_cont = case_when(
+      household_income == "$0 - $4,999" ~ 2500,
+      household_income == "$5,000 – $9,999" ~ 7500,
+      household_income == "$10,000 – $14,999" ~ 12500,
+      household_income == "$15,000 – $19,999" ~ 17500,
+      household_income == "$20,000 – $24,999" ~ 22500,
+      household_income == "$25,000 – $34,999" ~ 30000,
+      household_income == "$35,000 – $44,999" ~ 40000,
+      household_income == "$45,000 – $54,999" ~ 50000,
+      household_income == "$55,000 – $64,999" ~ 60000,
+      household_income == "$65,000 – $74,999" ~ 70000,
+      household_income == "$20,000 and Over" ~ 50000,
+      household_income == "Under $20,000" ~ 15000,
+      household_income == "$75,000 - $99,999" ~ 87500,
+      household_income == "$100,000 and Over" ~ 112500
+    ) / 10000 # scale by 10,000 for better coefficient interpretation
+  )
+```
+
+
+* Model 1R - Right ear: gender
+
+```{r warning = FALSE}
+model_1R <- glm(AUXTWIDR ~ gender, 
+                data = df_model,
+                family = poisson(link = "log")) 
+model_1R
+```
+
+* Model 2R - Right ear: gender, citizenship status (as categorical), number of children (as continuous), annual household income (as continuous)
+
+```{r warning = FALSE}
+model_2R <- glm(AUXTWIDR ~ gender + citizenship + children_under_5 + income_cont, 
+                data = df_model,
+                family = poisson(link = "log")) 
+model_2R
+```
+
+* Model 1L - Left ear: gender
+
+```{r warning = FALSE}
+model_1L <- glm(AUXTWIDL ~ gender, 
+                data = df_model,
+                family = poisson(link = "log")) 
+model_1L
+```
+
+* Model 2L - Left ear: gender, citizenship status (as categorical), number of children (as continuous), annual household income (as continuous)
+
+```{r warning = FALSE}
+model_2L <- glm(AUXTWIDL ~ gender + citizenship + children_under_5 + income_cont, 
+                data = df_model,
+                family = poisson(link = "log")) 
+model_2L
+```
+
+We will write a function to extract the model coefficients and statistics.
+
+```{r}
+#' Function to extract the model results
+#'
+#' @param model one of the four models above
+#' @param model_name name of the models
+#' 
+extract_model_results <- function(model, model_name) {
+  # get model coefficients
+  coefs <- tidy(model, conf.int = TRUE, exponentiate = TRUE) %>%
+    mutate(
+      stats = sprintf("%.4f", model$coef),
+      term = case_when(
+        term == "(Intercept)" ~ "Intercept",
+        term == "genderfemale" ~ "Female (vs Male)",
+        term == "citizenshipnon-citizen" ~ "Non-citizen (vs Citizen)",
+        term == "children_under_5" ~ "Children Under 5",
+        term == "income_cont" ~ "Household Income ($10k)",
+        TRUE ~ term
+      )
+    ) %>%
+    select(term, stats)
+  
+  # get model statistics
+  stats <- data.frame(
+    term = c("N", "Pseudo-R2", "AIC"),
+    stats = c(
+      length(model$y),
+      sprintf("%.4f", 1 - model$deviance / model$null.deviance),
+      sprintf("%.1f", AIC(model))
+    )
+  )
+  
+  # combine coefficients and statistics
+  bind_rows(coefs, stats) %>%
+    mutate(model = model_name) %>%
+    select(model, everything())
+}
+```
+
+Extract results for all models
+
+```{r}
+results_1R <- extract_model_results(model_1R, "Model 1R")
+results_2R <- extract_model_results(model_2R, "Model 2R")
+results_1L <- extract_model_results(model_1L, "Model 1L")
+results_2L <- extract_model_results(model_2L, "Model 2L")
+
+# keep the results of all models in one table
+all_results <- bind_rows(results_1R, results_2R, results_1L, results_2L)
+```
+
+Produce the table presenting the coefficients and model statistics
+
+```{r}
+# reshape to wide format
+all <- all_results %>%
+  pivot_wider(
+    id_cols = term,
+    names_from = model, 
+    values_from = stats
+  ) %>%
+  # reorder terms logically
+  mutate(order = case_when(
+    term == "Intercept" ~ 1,
+    term == "Female (vs Male)" ~ 2,
+    term == "Non-citizen (vs Citizen)" ~ 3,
+    term == "Children Under 5" ~ 4,
+    term == "Household Income ($10k)" ~ 5,
+    term == "N" ~ 6,
+    term == "Pseudo-R²" ~ 7,
+    term == "AIC" ~ 8
+  )) %>%
+  arrange(order) %>%
+  select(-order)
+
+# create nice table
+opts <- options(knitr.kable.NA = "-")
+knitr::kable(
+  all,
+  col.names = c("Statistics", "Model 1R", "Model 2R", "Model 1L", "Model 2L"),
+  caption = "Poisson Regression Results for Tympanometric Width") %>%
+  kable_styling(bootstrap_options = "bordered",
+                       full_width = FALSE,
+                       position = "center")
+```
+
+#### d. From model 2L
+
+We need to test whether there is a difference between males and females in terms of their incidence risk ratio (IRR).
+
+Let $\beta_1$ be the coefficient `genderfemale` which represents the log(IRR) comparing females to males. The null and alternative hypothesis for the test are:
+
+$H_0:$ $\beta_1 = 0 $
+
+$H_a:$ $\beta_1 \neq 0$
+
+```{r}
+summary(model_2L)
+```
+We see that the p-value = $0.000229 < 0.001$, so there is very strong evidence against the null hypothesis. We support that there is a difference between males and females in terms of their incidence risk ratio given other co-variates stay constant. The $IRR = exp(0.013131) = 1.01321$, so Female  Females have wider left ears
+
+Now we will test the predicted value of Tympanometric width measure of the left ear between females and males
+
+```{r}
+# Create prediction dataset
+prediction_data <- data.frame(
+  gender = df_model$gender,
+  citizenship = df_model$citizenship,
+  children_under_5 = mean(df_model$children_under_5, na.rm = TRUE),
+  income_cont = mean(df_model$income_cont, na.rm = TRUE)
+)
+predict_female <- subset(prediction_data, gender == "Female")
+predict_F <- predict(model_2L, predict_female, interval = "prediction", type = "response")
+
+predict_male <- subset(prediction_data, gender == "Male")
+predict_M <- predict(model_2L, predict_male, interval = "prediction", type = "response")
+
+summary(predict_F)
+summary(predict_M)
+
+```
+
+## Problem 2: Sakila
+
+```{r}
+sakila <- dbConnect(RSQLite::SQLite(), "sakila_master.db")
+dbListTables(sakila)
+
+gg <- function(query) {
+  dbGetQuery(sakila, query)
+}
+```
+rental: 1 row per rental: inventory_id
+
+inventory: 1 row per inventory: inventory_id, film_id
+
+film_actor: 1 row per actor per film: film_id, actor_id
+
+actor: 1 row per actor: actor_id, first_name, last_name
+
+Each row is a single rental of a single film with a single actor
+
+#### a. For each store:
+
+* Number of customers 
+
+```{r}
+microbenchmark(
+  # SQL then R operations
+  R = {
+    # extract data frame
+    store_customer <- gg("
+                         SELECT s.store_id, customer_id
+                         FROM store AS s 
+                              LEFT JOIN customer AS c 
+                              ON s.store_id = c.store_id
+                         ")
+    # R count
+    store_customer %>% group_by(store_id) %>% count()
+  },
+  
+  # Single query
+  SQL = gg("
+          SELECT s.store_id, COUNT(customer_id)
+          FROM store AS s 
+                LEFT JOIN customer AS c 
+                ON s.store_id = c.store_id
+          GROUP BY s.store_id
+           ")
+)
+```
+```{r}
+gg("SELECT * FROM customer")
+```
+
+* Percentage active
+
+```{r}
+microbenchmark(
+  # SQL then R operations
+  R = {
+    # extract data frame
+    customer_active <- gg("
+                         SELECT s.store_id, customer_id, active
+                         FROM store AS s 
+                              LEFT JOIN customer AS c 
+                              ON s.store_id = c.store_id
+                         ")
+    # R operations
+    customer_active %>% group_by(store_id) %>% 
+      act <- nrow()
+      total <- nrow(customer_active) 
+      percent_active <- act/total * 100
+  },
+  
+  # Single query
+  SQL = gg("
+          SELECT s.store_id, COUNT(customer_id)
+          FROM store AS s 
+                LEFT JOIN customer AS c 
+                ON s.store_id = c.store_id
+          GROUP BY s.store_id
+           ")
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
