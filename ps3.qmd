@@ -24,7 +24,7 @@ library(broom)
 library(kableExtra)
 library(RSQLite)
 library(DBI)
-library(microbenchmark)
+library(benford)
 ```
 
 ## Problem 1:
@@ -48,11 +48,11 @@ dim(df)
 # We do not have any missing values => convert to factor
 df <- df %>% 
   mutate(
-    gender = factor(RIAGENDR,
+    Gender = factor(RIAGENDR,
                     levels = c(1, 2),
-                    labels = c("male", "female"))
+                    labels = c("M", "F"))
 )
-head(df["gender"])
+head(df["Gender"])
 ```
 
 
@@ -64,12 +64,12 @@ head(df["gender"])
 df <- df %>% 
   mutate(
     DMDCITZN = ifelse(DMDCITZN %in% c(7, 9), NA, DMDCITZN),
-    citizenship = factor(DMDCITZN,
+    Citizenship = factor(DMDCITZN,
                          levels = c(1, 2),
-                         labels = c("citizen",  "non-citizen"))
+                         labels = c("Citizen",  "Non-Citizen"))
   )
 
-unique(df["citizenship"])
+unique(df["Citizenship"])
 ```
 
 * Number of children 5 years or younger in the household
@@ -77,12 +77,12 @@ unique(df["citizenship"])
 # no missing values so recode
 df <- df %>% 
   mutate(
-    children_under_5 = factor(DMDHHSZA,
+    Children_under_5 = factor(DMDHHSZA,
                               levels = c(0, 1, 2, 3),
                               labels = c("0", "1", "2", "3 or more"))
   )
 
-unique(df["children_under_5"])
+unique(df["Children_under_5"])
 ```
 
 * Annual household income
@@ -113,12 +113,12 @@ income_levels <- c("$0 - $4,999",
 df <- df %>% 
   mutate(
     INDHHIN2 = ifelse(INDHHIN2 %in% c(77, 99, .), NA, INDHHIN2),
-    household_income = factor(INDHHIN2,
+    Household_Income = factor(INDHHIN2,
                               levels = c(1:10, 12:15),
                               labels = income_levels,
                               ordered = TRUE)
   )
-(df["household_income"])
+(df["Household_Income"])
 ```
 
 
@@ -130,31 +130,31 @@ df_model <- df %>%
   filter(
     !is.na(AUXTWIDR) 
     & !is.na(AUXTWIDL)
-    & !is.na(gender) 
-    & !is.na(citizenship) 
-    & !is.na(children_under_5) 
-    & !is.na(household_income) 
+    & !is.na(Gender) 
+    & !is.na(Citizenship) 
+    & !is.na(Children_under_5) 
+    & !is.na(Household_Income) 
     & AUXTWIDR > 0
   ) %>%
   # convert household income to numeric for continuous
   # using midpoint approach
   mutate(
-    children_under_5 = as.numeric(children_under_5),
-    income_cont = case_when(
-      household_income == "$0 - $4,999" ~ 2500,
-      household_income == "$5,000 – $9,999" ~ 7500,
-      household_income == "$10,000 – $14,999" ~ 12500,
-      household_income == "$15,000 – $19,999" ~ 17500,
-      household_income == "$20,000 – $24,999" ~ 22500,
-      household_income == "$25,000 – $34,999" ~ 30000,
-      household_income == "$35,000 – $44,999" ~ 40000,
-      household_income == "$45,000 – $54,999" ~ 50000,
-      household_income == "$55,000 – $64,999" ~ 60000,
-      household_income == "$65,000 – $74,999" ~ 70000,
-      household_income == "$20,000 and Over" ~ 50000,
-      household_income == "Under $20,000" ~ 15000,
-      household_income == "$75,000 - $99,999" ~ 87500,
-      household_income == "$100,000 and Over" ~ 112500
+    Children_under_5 = as.numeric(Children_under_5),
+    Income_cont = case_when(
+      Household_Income == "$0 - $4,999" ~ 2500,
+      Household_Income == "$5,000 – $9,999" ~ 7500,
+      Household_Income == "$10,000 – $14,999" ~ 12500,
+      Household_Income == "$15,000 – $19,999" ~ 17500,
+      Household_Income == "$20,000 – $24,999" ~ 22500,
+      Household_Income == "$25,000 – $34,999" ~ 30000,
+      Household_Income == "$35,000 – $44,999" ~ 40000,
+      Household_Income == "$45,000 – $54,999" ~ 50000,
+      Household_Income == "$55,000 – $64,999" ~ 60000,
+      Household_Income == "$65,000 – $74,999" ~ 70000,
+      Household_Income == "$20,000 and Over" ~ 50000,
+      Household_Income == "Under $20,000" ~ 15000,
+      Household_Income == "$75,000 - $99,999" ~ 87500,
+      Household_Income == "$100,000 and Over" ~ 112500
     ) / 10000 # scale by 10,000 for better coefficient interpretation
   )
 ```
@@ -163,7 +163,7 @@ df_model <- df %>%
 * Model 1R - Right ear: gender
 
 ```{r warning = FALSE}
-model_1R <- glm(AUXTWIDR ~ gender, 
+model_1R <- glm(AUXTWIDR ~ Gender, 
                 data = df_model,
                 family = poisson(link = "log")) 
 model_1R
@@ -172,7 +172,7 @@ model_1R
 * Model 2R - Right ear: gender, citizenship status (as categorical), number of children (as continuous), annual household income (as continuous)
 
 ```{r warning = FALSE}
-model_2R <- glm(AUXTWIDR ~ gender + citizenship + children_under_5 + income_cont, 
+model_2R <- glm(AUXTWIDR ~ Gender + Citizenship + Children_under_5 + Income_cont, 
                 data = df_model,
                 family = poisson(link = "log")) 
 model_2R
@@ -181,7 +181,7 @@ model_2R
 * Model 1L - Left ear: gender
 
 ```{r warning = FALSE}
-model_1L <- glm(AUXTWIDL ~ gender, 
+model_1L <- glm(AUXTWIDL ~ Gender, 
                 data = df_model,
                 family = poisson(link = "log")) 
 model_1L
@@ -190,7 +190,7 @@ model_1L
 * Model 2L - Left ear: gender, citizenship status (as categorical), number of children (as continuous), annual household income (as continuous)
 
 ```{r warning = FALSE}
-model_2L <- glm(AUXTWIDL ~ gender + citizenship + children_under_5 + income_cont, 
+model_2L <- glm(AUXTWIDL ~ Gender + Citizenship + Children_under_5 + Income_cont, 
                 data = df_model,
                 family = poisson(link = "log")) 
 model_2L
@@ -211,10 +211,10 @@ extract_model_results <- function(model, model_name) {
       stats = sprintf("%.4f", model$coef),
       term = case_when(
         term == "(Intercept)" ~ "Intercept",
-        term == "genderfemale" ~ "Female (vs Male)",
-        term == "citizenshipnon-citizen" ~ "Non-citizen (vs Citizen)",
-        term == "children_under_5" ~ "Children Under 5",
-        term == "income_cont" ~ "Household Income ($10k)",
+        term == "GenderF" ~ "Female (vs Male)",
+        term == "citizenshipNon-Citizen" ~ "Non-Citizen (vs Citizen)",
+        term == "Children_under_5" ~ "Children Under 5",
+        term == "Income_cont" ~ "Household Income ($10k)",
         TRUE ~ term
       )
     ) %>%
@@ -295,30 +295,25 @@ $H_0:$ $\beta_1 = 0 $
 $H_a:$ $\beta_1 \neq 0$
 
 ```{r}
-summary(model_2L)
+summary(model_2L)$coefficients["GenderF", ]
 ```
 We see that the p-value = $0.000229 < 0.001$, so there is very strong evidence against the null hypothesis. We support that there is a difference between males and females in terms of their incidence risk ratio given other co-variates stay constant. The $IRR = exp(0.013131) = 1.01321$, so Female  Females have wider left ears
 
 Now we will test the predicted value of Tympanometric width measure of the left ear between females and males
 
 ```{r}
-# Create prediction dataset
-prediction_data <- data.frame(
-  gender = df_model$gender,
-  citizenship = df_model$citizenship,
-  children_under_5 = mean(df_model$children_under_5, na.rm = TRUE),
-  income_cont = mean(df_model$income_cont, na.rm = TRUE)
-)
-predict_female <- subset(prediction_data, gender == "Female")
-predict_F <- predict(model_2L, predict_female, interval = "prediction", type = "response")
+# predicted values
+data_M <- df_model[df_model$Gender == "M", ]
+data_F <- df_model[df_model$Gender == "F", ]
 
-predict_male <- subset(prediction_data, gender == "Male")
-predict_M <- predict(model_2L, predict_male, interval = "prediction", type = "response")
+pred_M <- predict(model_2L, newdata = data_M, type = "response")
+pred_F <- predict(model_2L, newdata = data_F, type = "response")
 
-summary(predict_F)
-summary(predict_M)
-
+boxplot(pred_M, pred_F, names=c("M","F"))
+c(mean(pred_M), mean(pred_F))
 ```
+We can see that the predicted value of Tympanometric width measure of the left ear of women is greater than that of men.
+
 
 ## Problem 2: Sakila
 
@@ -330,103 +325,300 @@ gg <- function(query) {
   dbGetQuery(sakila, query)
 }
 ```
-rental: 1 row per rental: inventory_id
 
-inventory: 1 row per inventory: inventory_id, film_id
+#### a. For each store, number of customers and percentage active
 
-film_actor: 1 row per actor per film: film_id, actor_id
+```{r}
+# SQL then R operations
+customer_r <- function() {
+  # extract data frames
+  store <- gg("
+              SELECT store_id
+              FROM store  
+              ")
+  customer <- gg("
+                 SELECT store_id, customer_id, active
+                 FROM customer
+                 ")
+  # merge in R
+  customer_active <- left_join(store, customer, by = "store_id")
+  
+  # find number of customers and percentage active
+  results <- customer_active %>% group_by(store_id) %>% 
+    summarise(
+      num_active = sum(active == 1, na.rm = TRUE),
+      num_customer = n(), 
+      percent_active = num_active/num_customer * 100
+    ) %>%
+    mutate(percent_active = round(percent_active, 2))
+  
+  return(results[, c(1,3,4)])
+}
+customer_r()
 
-actor: 1 row per actor: actor_id, first_name, last_name
+# single SQL query
+customer_sql <- function() {
+  results <- gg("
+                 SELECT s.store_id, 
+                        COUNT(customer_id) as num_customer,
+                        ROUND(
+                             (SUM(CASE WHEN active = 1 THEN 1 
+                              ELSE 0 END) * 100.0 / COUNT(customer_id)),
+                             2) AS percent_active
+                FROM store AS s 
+                     LEFT JOIN customer AS c 
+                          ON s.store_id = c.store_id
+                     GROUP BY s.store_id
+                ")
+}
+customer_sql()
+```
+We got the same results!
 
-Each row is a single rental of a single film with a single actor
+```{r}
+# compare the time
+microbenchmark(
+  R = customer_r(),
+  sQL = customer_sql()
+)
+```
+Using only SQL is much faster than manual R.
 
-#### a. For each store:
 
-* Number of customers 
+#### b. Generate a table identifying the names and country of each staff member
+
+```{r}
+staff_r <- function() {
+  # extract data frames
+  staff <- gg("
+              SELECT first_name, last_name, address_id
+              FROM staff
+              ")
+  address <- gg("
+                SELECT address_id, city_id
+                FROM address
+                ")
+  city <- gg("
+             SELECT city_id, country_id
+             FROM city
+             ")
+  country <- gg("
+                SELECT country_id, country
+                FROM country
+                ")
+  
+  # merge in R
+  staff_country <- staff %>%
+    left_join(address, by = "address_id") %>%
+    left_join(city, by = "city_id") %>%
+    left_join(country, by = "country_id")
+  
+  # combine names
+  staff_country$name <- paste(staff_country$first_name,
+                              staff_country$last_name, 
+                              sep = " ")
+  results <- staff_country[, c("name", "country")]
+  return(results)
+}
+staff_r()
+
+staff_sql <- function() {
+  results <- gg("
+                SELECT CONCAT(first_name, ' ', last_name) AS name,
+                       country
+                FROM staff AS s
+                     LEFT JOIN address AS a 
+                          ON s.address_id = a.address_id
+                     LEFT JOIN city AS ci 
+                          ON ci.city_id = a.city_id
+                     LEFT JOIN country as c 
+                          ON c.country_id = ci.country_id
+                ")
+  return(results)
+}
+staff_sql()
+```
+
+We got the same results.
 
 ```{r}
 microbenchmark(
-  # SQL then R operations
-  R = {
-    # extract data frame
-    store_customer <- gg("
-                         SELECT s.store_id, customer_id
-                         FROM store AS s 
-                              LEFT JOIN customer AS c 
-                              ON s.store_id = c.store_id
-                         ")
-    # R count
-    store_customer %>% group_by(store_id) %>% count()
-  },
-  
-  # Single query
-  SQL = gg("
-          SELECT s.store_id, COUNT(customer_id)
-          FROM store AS s 
-                LEFT JOIN customer AS c 
-                ON s.store_id = c.store_id
-          GROUP BY s.store_id
-           ")
+  R = staff_r(),
+  SQL = staff_sql()
 )
 ```
+
+One single SQL query is faster than SQL then R operations.
+
+#### c. Identify the name(s) of the film(s) which was/were rented for the highest dollar value
+
 ```{r}
-gg("SELECT * FROM customer")
+film_r <- function() {
+  # extract data frames
+  film <- gg("
+             SELECT film_id, title
+             FROM film
+             ")
+  inventory <- gg("
+                  SELECT inventory_id, film_id
+                  FROM inventory
+                  ")
+  rental <- gg("
+               SELECT rental_id, inventory_id
+               FROM rental
+               ")
+  payment <- gg("
+                SELECT rental_id, amount
+                FROM payment
+                ")
+  
+  # merge in R
+  film_rent <- payment %>%
+    left_join(rental, by = "rental_id") %>%
+    left_join(inventory, by = "inventory_id") %>%
+    left_join(film, by = "film_id") 
+    
+  # find the film with highest dollar value rented
+  results <- film_rent %>% group_by(film_id, title) %>%
+    summarize(total_revenue = sum(amount)) %>% 
+    ungroup() %>%
+    slice_max(total_revenue) %>%
+    select(title, total_revenue)
+ 
+  return(results)
+}
+film_r()
+
+film_sql <- function() {
+  results <- gg("
+                 SELECT title, MAX(total_revenue) AS total_revenue 
+                 FROM (
+                       SELECT title,
+                              SUM(amount) AS total_revenue
+                       FROM payment AS p 
+                            LEFT JOIN rental AS r 
+                                 ON r.rental_id = p.rental_id
+                            LEFT JOIN inventory AS i
+                                 ON r.inventory_id = i.inventory_id
+                            LEFT JOIN film AS f
+                                 ON i.film_id = f.film_id
+                       GROUP BY f.film_id
+                       )
+                 ")
+  
+  return(results)
+}
+film_sql()
 ```
 
-* Percentage active
+We got the same results that TELEGRAPH VOYAGE is the film with highest rental values.
 
-```{r}
+
+```{r message = FALSE, warning = FALSE}
 microbenchmark(
-  # SQL then R operations
-  R = {
-    # extract data frame
-    customer_active <- gg("
-                         SELECT s.store_id, customer_id, active
-                         FROM store AS s 
-                              LEFT JOIN customer AS c 
-                              ON s.store_id = c.store_id
-                         ")
-    # R operations
-    customer_active %>% group_by(store_id) %>% 
-      act <- nrow()
-      total <- nrow(customer_active) 
-      percent_active <- act/total * 100
-  },
-  
-  # Single query
-  SQL = gg("
-          SELECT s.store_id, COUNT(customer_id)
-          FROM store AS s 
-                LEFT JOIN customer AS c 
-                ON s.store_id = c.store_id
-          GROUP BY s.store_id
-           ")
+  R = film_r(),
+  SQL = film_sql()
 )
 ```
+R is a little slower than SQL.
+
+## Problem 3: Australian Records
+
+```{r}
+# import data to R
+aus_data <- read.csv("au-500.csv")
+aus_data
+# number of records
+records <- nrow(aus_data)
+```
+
+#### a. Percentage of websites are .com
+
+```{r}
+web_dot_com <- grep("\\.com$", aus_data$web)
+percent <- length(web_dot_com) / records * 100
+cat("Percentage of websites are .com is ", percent, "%")
+```
+#### b. Most common domain name amongst email addresses
+
+```{r}
+# find everything from the start up to @ then replace it with ""
+domains <- aus_data %>%
+  mutate(domain = gsub(".*@", "", aus_data$email)) %>%
+  count(domain, name = "count")
+
+domains %>% slice_max(count)
+```
+
+The most common domain name amongst all email address is `hotmail.com`
+
+#### c. Proportion of company names contain a non-alphabetic character
+
+```{r}
+# proportion of company names that contain special characters
+# including ampersands
+special_with_amp <- grep("[^a-zA-Z, \\s]", aus_data$company_name)
+
+count_special_with_amp <- length(special_with_amp)
+prop_with_amp <- count_special_with_amp / records * 100
+cat("Proportion of company names contain a non-alphabetic character is", 
+    round(prop_with_amp,2), "%\n")
+
+# proportion of company names that contain special characters
+# excluding ampersands
+special_wo_amp <- grep("[^a-zA-Z, \\s]", aus_data$company_name)
+
+count_special_wo_amp <- length(special_wo_amp)
+prop_wo_amp <- count_special_wo_amp / records * 100
+cat("Proportion of company names contain a non-alphabetic character excluding
+ampersands is", round(prop_wo_amp,2), "%")
+```
+
+#### d. Make all phone numbers written like cell phones
+
+```{r}
+# delete all - in the numbers
+numbers <- gsub("-", "", aus_data$phone1)
+
+# add - at correct positions
+phone1_cell <- gsub("^([0-9]{4})([0-9]{3})", "\\1-\\2-", numbers)
+
+cat("First 10 numbers of landlines: \n")
+head(phone1_cell, 10)
+
+cat("First 10 numbers of cell phones: \n")
+head(aus_data$phone2, 10)
+```
+#### e. Histogram of the log of the apartment numbers for all addresses
+
+```{r}
+# pattern with apt number at the end
+apt_num <- regmatches(aus_data$address, regexpr("(\\d+)$", aus_data$address))
+apt_num <- as.numeric(apt_num)
 
 
+# create data frame for histogram
+apt_data <- data.frame(
+  apartment_number = apt_num,
+  log_apartment = log(apt_num)
+)
+apt_data
 
+histogram <- ggplot(data = apt_data, mapping = aes(log_apartment)) +
+  geom_histogram(binwidth = 0.5) +
+  labs(x = "log of apartment numbers")
 
+histogram
+```
 
+#### f. Benford's law
 
+```{r, align = c}
+apt_first_digits <- benford(apt_num, 1)
+apt_first_digits
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+The distribution of the leading digits of the apartment numbers appear to follow Benford's Law. I think this can be used as real data.
 
 
 
