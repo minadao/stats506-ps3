@@ -449,7 +449,7 @@ One single SQL query is faster than SQL then R operations.
 
 #### c. Identify the name(s) of the film(s) which was/were rented for the highest dollar value
 
-```{r}
+```{r echo = FALSE}
 film_r <- function() {
   # extract data frames
   film <- gg("
@@ -599,7 +599,6 @@ apt_data <- data.frame(
   apartment_number = apt_num,
   log_apartment = log(apt_num)
 )
-apt_data
 
 histogram <- ggplot(data = apt_data, mapping = aes(log_apartment)) +
   geom_histogram(binwidth = 0.5) +
@@ -615,7 +614,7 @@ apt_first_digits <- benford(apt_num, 1)
 apt_first_digits
 ```
 
-The distribution of the leading digits of the apartment numbers appear to follow Benford's Law. I think this can be used as real data.
+The distribution of the leading digits of the apartment numbers appear to follow Benford's Law with the significant result from p-value of $8.675 \times 10^{-4}$. I think this can be used as real data.
 
 
 
