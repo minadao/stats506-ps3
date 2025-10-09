@@ -24,7 +24,7 @@ library(broom)
 library(kableExtra)
 library(RSQLite)
 library(DBI)
-library(benford)
+library(benford.analysis)
 ```
 
 ## Problem 1:
@@ -264,7 +264,7 @@ all <- all_results %>%
     term == "Children Under 5" ~ 4,
     term == "Household Income ($10k)" ~ 5,
     term == "N" ~ 6,
-    term == "Pseudo-R²" ~ 7,
+    term == "Pseudo-R2" ~ 7,
     term == "AIC" ~ 8
   )) %>%
   arrange(order) %>%
@@ -277,40 +277,50 @@ knitr::kable(
   col.names = c("Statistics", "Model 1R", "Model 2R", "Model 1L", "Model 2L"),
   caption = "Poisson Regression Results for Tympanometric Width") %>%
   kable_styling(bootstrap_options = "bordered",
-                       full_width = FALSE,
-                       position = "center")
+                full_width = FALSE,
+                position = "center")
 ```
 
 #### d. From model 2L
 
 We need to test whether there is a difference between males and females in terms of their incidence risk ratio (IRR).
 
-Let $\beta_1$ be the coefficient `genderfemale` which represents the log(IRR) comparing females to males. The null and alternative hypothesis for the test are:
+Let $\beta_1$ be the coefficient `GenderF` which represents the log(IRR) of females comparing to males. The null and alternative hypothesis for the test are:
 
-$H_0:$ $\beta_1 = 0 $
+$H_0:$ $\beta_1 = 0$
 
 $H_a:$ $\beta_1 \neq 0$
 
 ```{r}
-summary(model_2L)$coefficients["GenderF", ]
+summary(model_2L)$coef["GenderF", ]
 ```
 We see that the p-value = $0.000229 < 0.001$, so there is very strong evidence against the null hypothesis. We support that there is a difference between males and females in terms of their incidence risk ratio given other co-variates stay constant. The $IRR = exp(0.013131) = 1.01321$, so Female  Females have wider left ears
 
-Now we will test the predicted value of Tympanometric width measure of the left ear between females and males
+Now we will test the predicted value of Tympanometric width measure of the left ear between females and males.
 
-```{r}
+Let $p_F$ be the mean predicted value of Tympanometric width measure of the females' left ear, 
+    $p_M$ be the mean predicted value of Tympanometric width measure of the males' left ear.
+
+Our hypotheses are:
+
+$H_0:$ $p_F - p_M = 0$
+
+$H_a:$ $p_F - p_M \neq 0$
+
+```{r align = c}
 # predicted values
-data_M <- df_model[df_model$Gender == "M", ]
 data_F <- df_model[df_model$Gender == "F", ]
+data_M <- df_model[df_model$Gender == "M", ]
 
-pred_M <- predict(model_2L, newdata = data_M, type = "response")
 pred_F <- predict(model_2L, newdata = data_F, type = "response")
+pred_M <- predict(model_2L, newdata = data_M, type = "response")
 
-boxplot(pred_M, pred_F, names=c("M","F"))
-c(mean(pred_M), mean(pred_F))
+boxplot(pred_F, pred_M, names=c("M","F"))
+c(mean(pred_F), mean(pred_M))
+
+t.test(pred_F, pred_M)
 ```
-We can see that the predicted value of Tympanometric width measure of the left ear of women is greater than that of men.
-
+Following our t-test, t-stat = $15.26$ and p-value = $2.2 \times 10^{-16} < 0.001$. We support the alternative hypothesis that the true difference in means predicted value of Tympanometric width measure of the left ear between females and males is not 0. The $95\%$ confidence interval is $[0.9653634, 1.2499999]$ so females tend to have larger left ear width.
 
 ## Problem 2: Sakila
 
@@ -347,7 +357,8 @@ customer_r <- function() {
       num_customer = n(), 
       percent_active = num_active/num_customer * 100
     ) %>%
-    mutate(percent_active = round(percent_active, 2))
+    mutate(percent_active = round(percent_active, 2)) %>%
+    ungroup()
   
   return(results[, c(1,3,4)])
 }
@@ -358,14 +369,12 @@ customer_sql <- function() {
   results <- gg("
                  SELECT s.store_id, 
                         COUNT(customer_id) as num_customer,
-                        ROUND(
-                             (SUM(CASE WHEN active = 1 THEN 1 
-                              ELSE 0 END) * 100.0 / COUNT(customer_id)),
-                             2) AS percent_active
-                FROM store AS s 
-                     LEFT JOIN customer AS c 
-                          ON s.store_id = c.store_id
-                     GROUP BY s.store_id
+                        ROUND((SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END) 
+                             * 100.0 / COUNT(customer_id)), 2) AS percent_active
+                 FROM store AS s 
+                      LEFT JOIN customer AS c 
+                           ON s.store_id = c.store_id
+                      GROUP BY s.store_id
                 ")
 }
 customer_sql()
@@ -379,12 +388,13 @@ microbenchmark(
   sQL = customer_sql()
 )
 ```
-Using only SQL is much faster than manual R.
+Using only SQL is about $10$ times faster than manual R.
 
 
 #### b. Generate a table identifying the names and country of each staff member
 
 ```{r}
+# SQL then base R
 staff_r <- function() {
   # extract data frames
   staff <- gg("
@@ -419,6 +429,7 @@ staff_r <- function() {
 }
 staff_r()
 
+# only SQL
 staff_sql <- function() {
   results <- gg("
                 SELECT CONCAT(first_name, ' ', last_name) AS name,
@@ -428,8 +439,8 @@ staff_sql <- function() {
                           ON s.address_id = a.address_id
                      LEFT JOIN city AS ci 
                           ON ci.city_id = a.city_id
-                     LEFT JOIN country as c 
-                          ON c.country_id = ci.country_id
+                     LEFT JOIN country as co 
+                          ON co.country_id = ci.country_id
                 ")
   return(results)
 }
@@ -445,11 +456,12 @@ microbenchmark(
 )
 ```
 
-One single SQL query is faster than SQL then R operations.
+One single SQL query is about $10$ times faster than SQL then R operations.
 
 #### c. Identify the name(s) of the film(s) which was/were rented for the highest dollar value
 
 ```{r echo = FALSE}
+# SQL + base R
 film_r <- function() {
   # extract data frames
   film <- gg("
@@ -486,6 +498,7 @@ film_r <- function() {
 }
 film_r()
 
+# one SQL query
 film_sql <- function() {
   results <- gg("
                  SELECT title, MAX(total_revenue) AS total_revenue 
@@ -508,7 +521,7 @@ film_sql <- function() {
 film_sql()
 ```
 
-We got the same results that TELEGRAPH VOYAGE is the film with highest rental values.
+We got the same results that `TELEGRAPH VOYAGE` is the film with highest rental values.
 
 
 ```{r message = FALSE, warning = FALSE}
@@ -534,7 +547,7 @@ records <- nrow(aus_data)
 ```{r}
 web_dot_com <- grep("\\.com$", aus_data$web)
 percent <- length(web_dot_com) / records * 100
-cat("Percentage of websites are .com is ", percent, "%")
+cat("Percentage of websites are '.com' is ", percent, "%")
 ```
 #### b. Most common domain name amongst email addresses
 
@@ -563,7 +576,7 @@ cat("Proportion of company names contain a non-alphabetic character is",
 
 # proportion of company names that contain special characters
 # excluding ampersands
-special_wo_amp <- grep("[^a-zA-Z, \\s&]", aus_data$company_name)
+special_wo_amp <- grep("[^a-zA-Z, &\\s]", aus_data$company_name)
 
 count_special_wo_amp <- length(special_wo_amp)
 prop_wo_amp <- count_special_wo_amp / records * 100
@@ -610,11 +623,12 @@ histogram
 #### f. Benford's law
 
 ```{r, align = c}
-apt_first_digits <- benford(apt_num, 1)
-apt_first_digits
+apt_first_digits <- benford(apt_num, number.of.digits = 1)
+plot(apt_first_digits)
+chisq(apt_first_digits)
 ```
 
-The distribution of the leading digits of the apartment numbers appear to follow Benford's Law with the significant result from p-value of $8.675 \times 10^{-4}$. I think this can be used as real data.
+The distribution of the leading digits of the apartment numbers significantly deviates from Benford's Law with the significant result from p-value of $1.67 \times 10^{-10}$. This can not be used as real data.
 
 
 
